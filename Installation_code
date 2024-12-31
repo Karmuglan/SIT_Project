@@ -1,0 +1,10 @@
+Tesseract installation
+pip install pytesseract
+pip show pytesseract
+
+Pillow installation
+pip install Pillow
+pip show Pillow
+
+Opencv installation
+pip install Opencv

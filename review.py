@@ -176,6 +176,39 @@ class Include_member:
         btn_delete = Button(self.frame, text="Delete", command=self.delete_data, width=15)
         btn_delete.grid(row=4, column=2, padx=5, pady=10)
 
+        # Add a "View Data" button in the Include_member class
+        btn_view_data = Button(self.frame, text="View Data", command=self.view_data, width=15)
+        btn_view_data.grid(row=5, column=1, padx=5, pady=10)
+
+    # Add the view_data method to display data from the vehicles table
+    def view_data(self):
+        try:
+            conn = mysql.connect(host="localhost", user="root", password="", database="p_f")
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM vehicles")
+            rows = cursor.fetchall()
+
+            # Create a new window to display the data
+            view_window = Toplevel(self.frame)
+            view_window.title("Vehicles Data")
+            view_window.geometry("600x400")
+
+            # Create a Treeview widget to display the data
+            tree = ttk.Treeview(view_window, columns=("Vehicle Number", "Owner Name", "Contact Number", "Vehicle Type"), show="headings")
+            tree.heading("Vehicle Number", text="Vehicle Number")
+            tree.heading("Owner Name", text="Owner Name")
+            tree.heading("Contact Number", text="Contact Number")
+            tree.heading("Vehicle Type", text="Vehicle Type")
+            tree.pack(fill=BOTH, expand=True)
+
+            # Insert data into the Treeview
+            for row in rows:
+                tree.insert("", END, values=row)
+
+            conn.close()
+        except mysql.Error as e:
+            messagebox.showerror("Error", f"Failed to fetch data: {e}")
+
     # Inser user data
     def insert_data_manual(self):
         if self.txt_Name.get() == "" or self.txt_Mobile_no.get() == "" or self.txt_Vec_no.get() == "" or self.vec_type.get() == "":
@@ -230,6 +263,78 @@ class Include_member:
         except mysql.Error as e:
             messagebox.showerror("Error", f"Data deletion failed: {e}")
 
+class ManualInput:
+    def __init__(self, root, container):
+        self.frame = Frame(container)
+        self.frame.grid(row=0, column=0, sticky="nsew")
+
+        # Label for input field
+        self.label = Label(self.frame, text="Enter Vehicle Number:")
+        self.label.grid(row=0, column=0, padx=10, pady=10)
+
+        # Input field
+        self.input_field = Entry(self.frame, width=30)
+        self.input_field.grid(row=0, column=1, padx=10, pady=10)
+
+        # Submit button
+        self.submit_button = Button(self.frame, text="Submit", command=self.submit_value)
+        self.submit_button.grid(row=1, column=0, columnspan=2, pady=10)
+
+    def submit_value(self):
+        vehicle_num = self.input_field.get().upper()
+        if not vehicle_num:
+            messagebox.showerror("Error", "Vehicle Number is required")
+            return
+
+        try:
+            # Database connection
+            self.con = mysql.connect(host="localhost", user="root", password="", database="p_f")
+            self.cursor = self.con.cursor()
+
+            # Check if the vehicle exists in the vehicles table
+            check_vehicle_query = "SELECT * FROM vehicles WHERE vehicle_number = %s"
+            self.cursor.execute(check_vehicle_query, (vehicle_num,))
+            vehicle_exists = self.cursor.fetchone()
+
+            if not vehicle_exists:
+                messagebox.showerror("Error", f"Vehicle number {vehicle_num} does not exist. Please register the vehicle first.")
+                return
+
+            # Check if the vehicle is already parked (i.e., has no exit_time)
+            select_query = "SELECT * FROM parking_logs WHERE vehicle_number = %s AND exit_time IS NULL"
+            self.cursor.execute(select_query, (vehicle_num,))
+            result = self.cursor.fetchone()
+
+            if result:  # If a record exists, the vehicle is exiting
+                query = "UPDATE parking_logs SET exit_time = NOW() WHERE vehicle_number = %s AND exit_time IS NULL"
+                self.cursor.execute(query, (vehicle_num,))
+                self.con.commit()
+                messagebox.showinfo("Message", f"Vehicle number {vehicle_num} exited successfully")
+            else:  # If no record exists, the vehicle is entering
+                # Check for an available parking slot
+                slot_query = "SELECT slot_number FROM parking_slots WHERE status = 'Available' LIMIT 1"
+                self.cursor.execute(slot_query)
+                slot_result = self.cursor.fetchone()
+
+                if slot_result:  # If a parking slot is available
+                    parking_slot = slot_result[0]
+                    insert_query = """
+                        INSERT INTO parking_logs (vehicle_number, parking_slot, entry_time)
+                        VALUES (%s, %s, NOW())
+                    """
+                    self.cursor.execute(insert_query, (vehicle_num, parking_slot))
+                    # Mark the parking slot as occupied
+                    update_slot_query = "UPDATE parking_slots SET status = 'Occupied' WHERE slot_number = %s"
+                    self.cursor.execute(update_slot_query, (parking_slot,))
+                    self.con.commit()
+                    messagebox.showinfo("Message", f"Vehicle number {vehicle_num} parked successfully\nParking slot allocated: {parking_slot}")
+                else:  # No parking slots available
+                    messagebox.showerror("Error", "No available parking slots")
+        except mysql.Error as e:
+            print(f"Error processing vehicle data: {e}")
+            self.con.rollback()
+            messagebox.showerror("Error", f"Database error: {e}")
+
 class Application:
     def __init__(self, root):
         self.root = root
@@ -250,6 +355,9 @@ class Application:
         # Include Member page
         self.include_member = Include_member(self.root, self.container)
 
+        # Manual Input page
+        self.manual_input = ManualInput(self.root, self.container)
+
         # Create a menu bar
         self.menu_bar = Menu(self.root)
         self.root.config(menu=self.menu_bar)
@@ -266,6 +374,11 @@ class Application:
         self.menu_bar.add_cascade(label="Include Member", menu=self.include_member_menu)
         self.include_member_menu.add_command(label="Include Member", command=self.show_include_member)
 
+        # Add "Manual Input" menu
+        self.manual_input_menu = Menu(self.menu_bar, tearoff=0)
+        self.menu_bar.add_cascade(label="Manual Input", menu=self.manual_input_menu)
+        self.manual_input_menu.add_command(label="Manual Input", command=self.show_manual_input)
+
         # Start with the camera view
         self.show_camera_in()
 
@@ -277,7 +390,16 @@ class Application:
     def show_include_member(self):
         self.cam.video_label_in.grid_remove()
         self.cam.capture_btn_in.grid_remove()
+        self.manual_input.frame.grid_remove()
+        self.include_member.frame.grid()
         self.include_member.frame.tkraise()
+
+    def show_manual_input(self):
+        self.cam.video_label_in.grid_remove()
+        self.cam.capture_btn_in.grid_remove()
+        self.include_member.frame.grid_remove()
+        self.manual_input.frame.grid()
+        self.manual_input.frame.tkraise()
 
 if __name__ == "__main__":
     root = Tk()

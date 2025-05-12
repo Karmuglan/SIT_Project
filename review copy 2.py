@@ -43,7 +43,7 @@ class WebcamApp:
             label_w, label_h = label_size
             cv2.rectangle(frame, (x, y - label_h - 10), (x + label_w + 10, y), (0, 255, 0), -1)
             cv2.putText(frame, label, (x + 5, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-            
+
         # Check if any cars are detected
         # If a car is detected, set the flag to True and call capture_photo_in
         if len(cars) > 0 and not self.car_detected:
@@ -132,10 +132,14 @@ class WebcamApp:
             result = self.cursor.fetchone()  # Fetch a single row
 
             if result:  # If a record exists, the vehicle is exiting
+                fee_output = 0
                 query = "UPDATE parking_logs SET exit_time = NOW() WHERE vehicle_number = %s AND exit_time IS NULL"
                 self.cursor.execute(query, (vec_num,))
                 self.con.commit()
                 messagebox.showinfo("Message", f"Vehicle number {vec_num} exited successfully")
+                self.fees=self.cursor.callproc('get_parking_fee', [vec_num, fee_output])
+                fee_output = self.cursor.callproc("get_parking_fee", [vec_num, 0])[1]
+                messagebox.showinfo("Fee",f"Parking fee for {vec_num} is Rs.{fee_output:.2f}")
             else:  # If no record exists, the vehicle is entering
                 # Check for an available parking slot
                 slot_query = "SELECT slot_number FROM parking_slots WHERE status = 'Available' LIMIT 1"
@@ -330,10 +334,14 @@ class ManualInput:
             result = self.cursor.fetchone()
 
             if result:  # If a record exists, the vehicle is exiting
+                fee_output = 0
                 query = "UPDATE parking_logs SET exit_time = NOW() WHERE vehicle_number = %s AND exit_time IS NULL"
                 self.cursor.execute(query, (vehicle_num,))
                 self.con.commit()
                 messagebox.showinfo("Message", f"Vehicle number {vehicle_num} exited successfully")
+                self.fees=self.cursor.callproc('get_parking_fee', [vehicle_num, fee_output])
+                fee_output = self.cursor.callproc("get_parking_fee", [vehicle_num, 0])[1]
+                messagebox.showinfo("Fee",f"Parking fee for {vehicle_num} is Rs.{fee_output:.2f}")
             else:  # If no record exists, the vehicle is entering
                 # Check for an available parking slot
                 slot_query = "SELECT slot_number FROM parking_slots WHERE status = 'Available' LIMIT 1"

@@ -133,11 +133,14 @@ class WebcamApp:
 
             if result:  # If a record exists, the vehicle is exiting
                 fee_output = 0
+                # Update the parking slot status to available
                 query = "UPDATE parking_logs SET exit_time = NOW() WHERE vehicle_number = %s AND exit_time IS NULL"
                 self.cursor.execute(query, (vec_num,))
                 self.con.commit()
+                self.gate=servo_control(self.root)
+                self.gate.open_gate()
                 messagebox.showinfo("Message", f"Vehicle number {vec_num} exited successfully")
-                self.fees=self.cursor.callproc('get_parking_fee', [vec_num, fee_output])
+                self.cursor.callproc('get_parking_fee', [vec_num, fee_output])
                 fee_output = self.cursor.callproc("get_parking_fee", [vec_num, 0])[1]
                 messagebox.showinfo("Fee",f"Parking fee for {vec_num} is Rs.{fee_output:.2f}")
             else:  # If no record exists, the vehicle is entering
@@ -158,6 +161,8 @@ class WebcamApp:
                     self.cursor.execute(update_slot_query, (parking_slot,))
                     self.con.commit()
                     messagebox.showinfo("Message", f"Vehicle number {vec_num} parked successfully\nParking slot allocated: {parking_slot}")
+                    self.gate=servo_control(self.root)
+                    self.gate.open_gate()
                 else:  # No parking slots available
                     messagebox.showerror("Error", "No available parking slots")
         except mysql.Error as e:
@@ -339,7 +344,9 @@ class ManualInput:
                 self.cursor.execute(query, (vehicle_num,))
                 self.con.commit()
                 messagebox.showinfo("Message", f"Vehicle number {vehicle_num} exited successfully")
-                self.fees=self.cursor.callproc('get_parking_fee', [vehicle_num, fee_output])
+                self.gate=servo_control(self.root)
+                self.gate.open_gate()
+                self.cursor.callproc('get_parking_fee', [vehicle_num, fee_output])
                 fee_output = self.cursor.callproc("get_parking_fee", [vehicle_num, 0])[1]
                 messagebox.showinfo("Fee",f"Parking fee for {vehicle_num} is Rs.{fee_output:.2f}")
             else:  # If no record exists, the vehicle is entering
@@ -360,6 +367,8 @@ class ManualInput:
                     self.cursor.execute(update_slot_query, (parking_slot,))
                     self.con.commit()
                     messagebox.showinfo("Message", f"Vehicle number {vehicle_num} parked successfully\nParking slot allocated: {parking_slot}")
+                    self.gate=servo_control(self.root)
+                    self.gate.open_gate()
                 else:  # No parking slots available
                     messagebox.showerror("Error", "No available parking slots")
         except mysql.Error as e:
@@ -432,6 +441,28 @@ class Application:
         self.include_member.frame.grid_remove()
         self.manual_input.frame.grid()
         self.manual_input.frame.tkraise()
+
+class servo_control:
+    from gpiozero import AngularServo
+    from time import sleep
+
+    def __init__(self):
+        # Initialize the servo on GPIO 18
+        self.servo = self.AngularServo(
+            18,
+            min_angle=0,
+            max_angle=180,
+            min_pulse_width=0.0005,
+            max_pulse_width=0.0025
+        )
+
+    def open_gate(self):
+        self.servo.angle = 90  # Open gate
+        self.sleep(3)
+        self.servo.angle = 0   # Close gate
+        self.sleep(3)
+        self.servo.detach()    # Stop PWM signal and release servo
+
 
 if __name__ == "__main__":
     root = Tk()
